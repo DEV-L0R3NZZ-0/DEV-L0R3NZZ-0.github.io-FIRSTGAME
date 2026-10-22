@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DETENTION: Escape the School</title>
+<style>
+:root{--bg:#070912;--panel:#111626;--line:#39435b;--text:#e7eaf4;--muted:#9aa6c2;--lime:#b8ff9b;--red:#ff5874;--gold:#ffd166}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(ellipse at top,#171c31 0,#080a12 58%,#04050a 100%);color:var(--text);font-family:ui-monospace,SFMono-Regular,Consolas,monospace;min-height:100vh;padding:18px 12px 36px}
+main{max-width:960px;margin:auto}
+header{text-align:center;margin:8px 0 16px}
+h1{font-size:clamp(28px,6vw,48px);letter-spacing:3px;margin:0;color:#f2f4ff;text-shadow:3px 3px 0 #6b2546,0 0 22px #8797ff55}
+.sub{color:var(--muted);font-size:13px;line-height:1.5;margin:8px auto;max-width:650px}
+.shell{border:2px solid #3b4563;background:#0c1020;padding:10px;box-shadow:0 0 0 4px #05060b,0 18px 60px #0009}
+.topbar{display:flex;gap:10px;justify-content:space-between;align-items:center;flex-wrap:wrap;padding:2px 2px 10px;font-size:12px}
+.stat{background:#151b2d;border:1px solid #303954;padding:7px 10px}.stat b{color:var(--lime)}
+#stage{position:relative}
+canvas{display:block;width:100%;height:auto;image-rendering:pixelated;background:#080b14;border:2px solid #272f48;touch-action:none}
+#overlay{position:absolute;inset:0;background:#050711d9;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px}
+#overlay.hidden{display:none}
+.modal{max-width:470px}
+.modal h2{font-size:clamp(22px,5vw,36px);color:var(--gold);margin:0 0 12px;text-shadow:3px 3px #673e55}
+.modal p{line-height:1.7;color:#d5d9e8;font-size:14px}
+button{font:700 14px ui-monospace,monospace;letter-spacing:.4px;border:1px solid #d6e0ff;background:#dfe6ff;color:#0a1020;padding:12px 15px;cursor:pointer;box-shadow:0 4px 0 #66739b}
+button:hover{filter:brightness(1.1)}button:active{transform:translateY(3px);box-shadow:0 1px 0 #66739b}
+button.secondary{background:#202940;color:#edf1ff;border-color:#4a5878;box-shadow:0 4px 0 #090c15}
+.actions{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:14px}
+.lower{display:grid;grid-template-columns:1.2fr 1fr;gap:12px;margin-top:14px}
+.card{background:#101526;border:1px solid #303954;padding:12px;font-size:12px;line-height:1.7;color:#bfc8df}
+.card h3{margin:0 0 6px;color:#fff;font-size:13px;letter-spacing:1px}
+.card strong{color:var(--lime)}
+#hint{min-height:22px;color:var(--gold);font-size:12px;text-align:center;padding-top:10px}
+.touch{display:none;grid-template-columns:repeat(3,52px);grid-template-rows:43px 43px;gap:5px;justify-content:center;margin-top:12px}
+.touch button{padding:0;font-size:20px;background:#202940;color:white;border-color:#4a5878;box-shadow:0 3px #080b12;touch-action:none}
+.touch .up{grid-column:2}.touch .left{grid-column:1;grid-row:2}.touch .down{grid-column:2;grid-row:2}.touch .right{grid-column:3;grid-row:2}
+@media(max-width:650px){.lower{grid-template-columns:1fr}.touch{display:grid}body{padding:12px 8px}.shell{padding:6px}.topbar{font-size:11px}}
+</style>
+</head>
+<body>
+<main>
+<header>
+<h1>DETENTION</h1>
+<div class="sub">ESCAPE THE SCHOOL AFTER DARK. Find the key. Unlock the exit. Don't let the thing in the halls find you.</div>
+</header>
+<section class="shell">
+<div class="topbar">
+<div class="stat">LEVEL <b id="levelText">1 / 3</b></div>
+<div class="stat">KEY <b id="keyText">MISSING</b></div>
+<div class="stat">BATTERY <b id="batteryText">100%</b></div>
+<div class="stat">TIME <b id="timeText">00:00</b></div>
+</div>
+<div id="stage">
+<canvas id="game" width="640" height="416" aria-label="Detention pixel art game"></canvas>
+<div id="overlay">
+<div class="modal">
+<h2 id="overlayTitle">AFTER THE BELL</h2>
+<p id="overlayText">The doors are locked. The lights are dead. Somewhere in the school, something is walking the halls.<br><br>Find the key and get to the exit. Your flashlight battery drains while you explore.</p>
+<button id="mainButton">ENTER THE SCHOOL</button>
+</div>
+</div>
+</div>
+<div id="hint">WASD / ARROW KEYS to move · E to interact · Avoid the hall monitor</div>
+<div class="actions">
+<button class="secondary" id="restartButton">RESTART LEVEL</button>
+<button class="secondary" id="soundButton">SOUND: OFF</button>
+</div>
+<div class="touch" aria-label="Touch movement controls">
+<button class="up" data-dir="up">▲</button><button class="left" data-dir="left">◀</button><button class="down" data-dir="down">▼</button><button class="right" data-dir="right">▶</button>
+</div>
+</section>
+<div class="lower">
+<div class="card"><h3>HOW TO SURVIVE</h3><strong>Move:</strong> WASD or arrow keys<br><strong>Interact:</strong> E near a door or exit<br><strong>Goal:</strong> Find the glowing key, then reach the exit tile.<br><strong>Light:</strong> Your flashlight has limited battery. Find glowing battery pickups.</div>
+<div class="card"><h3>THREE LEVELS</h3><strong>01 — THE CLASSROOMS:</strong> Learn the layout.<br><strong>02 — THE BASEMENT:</strong> Longer corridors. Faster hunter.<br><strong>03 — THE OLD WING:</strong> The lights barely work. Find the final exit.</div>
+</div>
+</main>
+<script>
+(()=>{
+const canvas=document.querySelector('#game'),ctx=canvas.getContext('2d');
+const W=20,H=13,T=32;
+const $=id=>document.getElementById(id);
+const maps=[
+[
+"####################",
+"#P...#......#......#",
+"#.##.#.####.#.####.#",
+"#....#....#.#....#.#",
+"####.####.#.##.#.#.#",
+"#....#....#....#...#",
+"#.####.######.###..#",
+"#......#....#......#",
+"#.######.##.#####.##",
+"#...........#......#",
+"#.####.###..#.####.#",
+"#K....#.....#....E.#",
+"####################"],
+[
+"####################",
+"#P.....#...........#",
+"#####..#.#########.#",
+"#......#.....#.....#",
+"#.#########..#.###.#",
+"#.........#..#...#.#",
+"###.#####.#.####.#.#",
+"#...#.....#......#.#",
+"#.###.##########.#.#",
+"#.....#..........#.#",
+"#.#####.##########.#",
+"#K...............E.#",
+"####################"],
+[
+"####################",
+"#P....#............#",
+"#.##..#.##########.#",
+"#.##..#......#.....#",
+"#.....######.#.###.#",
+"#####......#.#...#.#",
+"#...#.####.#.###.#.#",
+"#.#.#....#.#.....#.#",
+"#.#.####.#.#######.#",
+"#.#......#.........#",
+"#.########.#######.#",
+"#K...............E.#",
+"####################"]
+];
+let level=0,map,player,monster,key,exit,batteries,hasKey,battery,started,finished,won,gameOver,startTime,lastFrame,lastMove,lastMonster,elapsed,keys=new Set(),touchDir=null,sound=false,audio=null;
+function loadLevel(n){
+ level=n; map=maps[level].map(r=>r.split(''));
+ player=find('P'); monster=find('M')||{x:18,y:1}; key=find('K'); exit=find('E');
+ map[player.y][player.x]='.'; if(key)map[key.y][key.x]='.'; if(exit)map[exit.y][exit.x]='.';
+ if(!key)key={x:1,y:11}; if(!exit)exit={x:18,y:11};
+ monster=level===0?{x:17,y:9}:level===1?{x:17,y:1}:{x:18,y:10};
+ batteries=level===0?[{x:8,y:5},{x:14,y:9}]:level===1?[{x:3,y:3},{x:14,y:7}]:[{x:10,y:3},{x:16,y:9}];
+ hasKey=false;battery=100;started=true;finished=false;won=false;gameOver=false;
+ startTime=performance.now();lastFrame=0;lastMove=0;lastMonster=0;
+ $('levelText').textContent=`${level+1} / 3`; $('keyText').textContent='MISSING';$('batteryText').textContent='100%';$('timeText').textContent='00:00';
+ $('overlay').classList.add('hidden');$('hint').textContent='Find the key. The flashlight will not last forever.';
+ draw();
+}
+function find(ch){for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(map[y][x]===ch)return{x,y};return null}
+function wall(x,y){return x<0||y<0||x>=W||y>=H||map[y][x]==='#'}
+function tileNoise(x,y){return ((x*13+y*7+level*5)%4)}
+function draw(){
+ ctx.fillStyle='#080b14';ctx.fillRect(0,0,640,416);
+ for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+  const px=x*T,py=y*T;
+  if(wall(x,y)){ctx.fillStyle='#101729';ctx.fillRect(px,py,T,T);ctx.fillStyle='#29334a';ctx.fillRect(px,py,T,4);ctx.fillStyle='#1b2438';ctx.fillRect(px+4,py+7,24,21);ctx.fillStyle='#0b1020';ctx.fillRect(px+7,py+10,18,14);}
+  else{ctx.fillStyle=(x+y)%2?'#171e30':'#141b2c';ctx.fillRect(px,py,T,T);ctx.fillStyle='#202a40';ctx.fillRect(px+tileNoise(x,y)*3+4,py+23,4,2);if((x*5+y*3)%17===0){ctx.fillStyle='#39445a';ctx.fillRect(px+14,py+8,3,3);}}
+ }
+ // classroom lockers and flickering lights
+ for(let x=2;x<18;x+=4){if(!wall(x,2)){ctx.fillStyle='#293f58';ctx.fillRect(x*T+4,2*T+5,24,23);ctx.fillStyle='#60738a';ctx.fillRect(x*T+7,2*T+8,18,2);ctx.fillStyle='#090d18';ctx.fillRect(x*T+22,2*T+13,2,5);}}
+ // battery pickups
+ batteries.forEach(b=>{if(!b.taken){ctx.fillStyle='#b8ff9b';ctx.fillRect(b.x*T+10,b.y*T+7,12,19);ctx.fillStyle='#ecffe7';ctx.fillRect(b.x*T+13,b.y*T+4,6,4);ctx.fillStyle='#356b5a';ctx.fillRect(b.x*T+14,b.y*T+12,4,9);}});
+ if(!hasKey){ctx.fillStyle='#ffd166';ctx.fillRect(key.x*T+7,key.y*T+13,19,6);ctx.fillRect(key.x*T+7,key.y*T+9,8,14);ctx.fillStyle='#fff2bd';ctx.fillRect(key.x*T+10,key.y*T+12,3,7);}
+ // Exit is locked until key found
+ ctx.fillStyle=hasKey?'#8dffad':'#4c526a';ctx.fillRect(exit.x*T+5,exit.y*T+2,22,29);ctx.fillStyle='#0b1020';ctx.fillRect(exit.x*T+9,exit.y*T+6,14,25);ctx.fillStyle=hasKey?'#b8ff9b':'#ffd166';ctx.fillRect(exit.x*T+19,exit.y*T+17,3,3);
+ // monster sprite
+ sprite(monster.x,monster.y,'monster');
+ sprite(player.x,player.y,'player');
+ // flashlight cone / dark overlay, with visible circle around player
+ const radius=Math.max(78,140*(battery/100));
+ const grad=ctx.createRadialGradient(player.x*T+16,player.y*T+16,14,player.x*T+16,player.y*T+16,radius);
+ grad.addColorStop(0,'rgba(3,5,13,.03)');
+ grad.addColorStop(.28,'rgba(3,5,13,.22)');
+ grad.addColorStop(.62,'rgba(3,5,13,.72)');
+ grad.addColorStop(1,'rgba(3,5,13,.97)');
+ ctx.fillStyle=grad;ctx.fillRect(0,0,640,416);
+ // redraw player brightly on top of the darkness
+ sprite(player.x,player.y,'player');
+ if(battery<25&&Math.floor(performance.now()/220)%2===0){ctx.fillStyle='#ff587455';ctx.fillRect(0,0,640,416);}
+}
+function sprite(x,y,type){
+ const px=x*T,py=y*T;
+ if(type==='player'){
+  ctx.fillStyle='#05070d';ctx.fillRect(px+8,py+7,17,23);
+  ctx.fillStyle='#d6e0ff';ctx.fillRect(px+10,py+5,13,11);
+  ctx.fillStyle='#171b2b';ctx.fillRect(px+8,py+4,17,5);
+  ctx.fillStyle='#ffcfad';ctx.fillRect(px+11,py+8,3,3);ctx.fillRect(px+19,py+8,3,3);
+  ctx.fillStyle='#5e8cff';ctx.fillRect(px+8,py+16,17,11);
+  ctx.fillStyle='#a9c1ff';ctx.fillRect(px+11,py+18,10,3);
+  ctx.fillStyle='#d6e0ff';ctx.fillRect(px+10,py+27,5,3);ctx.fillRect(px+20,py+27,5,3);
+ }else{
+  ctx.fillStyle='#03050a';ctx.fillRect(px+5,py+5,23,25);
+  ctx.fillStyle='#702a45';ctx.fillRect(px+7,py+8,19,17);
+  ctx.fillStyle='#c5b4b7';ctx.fillRect(px+9,py+5,15,11);
+  ctx.fillStyle='#17111d';ctx.fillRect(px+8,py+3,17,5);
+  ctx.fillStyle='#ff5874';ctx.fillRect(px+10,py+9,4,4);ctx.fillRect(px+19,py+9,4,4);
+  ctx.fillStyle='#05070d';ctx.fillRect(px+11,py+18,12,4);
+  ctx.fillStyle='#4a1b30';ctx.fillRect(px+8,py+25,7,5);ctx.fillRect(px+20,py+25,7,5);
+ }
+}
+function move(dx,dy){
+ if(!started||finished)return;
+ const nx=player.x+dx,ny=player.y+dy;
+ if(!wall(nx,ny)){player.x=nx;player.y=ny;
+  if(!hasKey&&player.x===key.x&&player.y===key.y){hasKey=true;$('keyText').textContent='FOUND';$('hint').textContent='You found the key. Find the exit!';beep(760);}
+  const bi=batteries.find(b=>!b.taken&&b.x===player.x&&b.y===player.y);if(bi){bi.taken=true;battery=Math.min(100,battery+35);$('hint').textContent='Battery picked up. Keep moving.';beep(520);}
+  if(player.x===exit.x&&player.y===exit.y){if(hasKey)finish(true);else $('hint').textContent='Locked! Find the golden key first.';}
+  if(player.x===monster.x&&player.y===monster.y)finish(false);
+  draw();
+ }
+}
+function monsterStep(){
+ if(!started||finished)return;
+ const dx=Math.sign(player.x-monster.x),dy=Math.sign(player.y-monster.y);
+ let opts=Math.abs(player.x-monster.x)>Math.abs(player.y-monster.y)?[[dx,0],[0,dy],[0,-dy],[-dx,0]]:[[0,dy],[dx,0],[-dx,0],[0,-dy]];
+ for(const [mx,my] of opts){if((mx||my)&&!wall(monster.x+mx,monster.y+my)){monster.x+=mx;monster.y+=my;break;}}
+ if(monster.x===player.x&&monster.y===player.y)finish(false);
+}
+function finish(success){finished=true;won=success;draw();$('overlay').classList.remove('hidden');$('overlayTitle').textContent=success?(level===2?'YOU ESCAPED!':'LEVEL CLEARED'):'CAUGHT IN DETENTION';$('overlayText').innerHTML=success?(level===2?'You made it out of the old wing. You survived all three levels.':'You found the exit. But there are more halls to escape...'):'Footsteps stop right behind you.<br><br>The hall monitor caught you. Try another route.';$('mainButton').textContent=success?(level===2?'PLAY AGAIN':'NEXT LEVEL'):'TRY AGAIN';$('hint').textContent=success?'Escape successful.': 'Caught! Restart and try a different route.';beep(success?880:120);}
+function beep(freq){if(!sound)return;try{audio=audio||new(window.AudioContext||window.webkitAudioContext)();const o=audio.createOscillator(),g=audio.createGain();o.frequency.value=freq;o.type='square';g.gain.value=.035;o.connect(g);g.connect(audio.destination);o.start();o.stop(audio.currentTime+.09);}catch(e){}}
+function tick(now){
+ if(started&&!finished){
+  if(!lastFrame)lastFrame=now;const dt=Math.min((now-lastFrame)/1000,.05);lastFrame=now;elapsed=(now-startTime)/1000;
+  $('timeText').textContent=String(Math.floor(elapsed/60)).padStart(2,'0')+':'+String(Math.floor(elapsed%60)).padStart(2,'0');
+  battery=Math.max(0,battery-dt*(level===2?2.2:level===1?1.7:1.35));$('batteryText').textContent=Math.ceil(battery)+'%';
+  if(battery===0){$('hint').textContent='Your flashlight is dead. Find a battery!';}
+  const speed=level===0?850:level===1?650:500;
+  if(now-lastMonster>speed){lastMonster=now;monsterStep();draw();}
+  if(battery===0&&Math.random()<.008){} 
+ }
+ requestAnimationFrame(tick);
+}
+function startButton(){if(!started||!finished){loadLevel(0);return;}if(won&&level<2){loadLevel(level+1);return;}if(won&&level===2){loadLevel(0);return;}loadLevel(level);}
+$('mainButton').addEventListener('click',startButton);
+$('restartButton').addEventListener('click',()=>loadLevel(level||0));
+$('soundButton').addEventListener('click',()=>{sound=!sound;$('soundButton').textContent='SOUND: '+(sound?'ON':'OFF');if(sound)beep(660);});
+document.addEventListener('keydown',e=>{const k=e.key.toLowerCase();if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k))e.preventDefault();keys.add(k);if(k==='e'&&started&&!finished){if(player.x===exit.x&&player.y===exit.y){if(hasKey)finish(true);else $('hint').textContent='The exit is locked. Find the key.';}}if(['arrowup','w'].includes(k))move(0,-1);if(['arrowdown','s'].includes(k))move(0,1);if(['arrowleft','a'].includes(k))move(-1,0);if(['arrowright','d'].includes(k))move(1,0);});
+document.addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));
+window.addEventListener('blur',()=>keys.clear());
+const dirs={up:[0,-1],down:[0,1],left:[-1,0],right:[1,0]};
+document.querySelectorAll('[data-dir]').forEach(btn=>{btn.addEventListener('click',()=>move(...dirs[btn.dataset.dir]));});
+function showTitle(){map=maps[0].map(r=>r.split(''));player={x:1,y:1};monster={x:17,y:9};key={x:1,y:11};exit={x:18,y:11};batteries=[];hasKey=false;battery=100;started=false;finished=false;draw();}
+showTitle();requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
