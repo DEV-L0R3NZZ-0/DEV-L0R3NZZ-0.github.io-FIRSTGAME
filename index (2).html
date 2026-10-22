@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DETENTION — Escape the School</title>
+<style>
+:root{color-scheme:dark;--bg:#090b14;--panel:#121827;--line:#34415a;--text:#f1f4ff;--muted:#aab5cc;--lime:#b8ff9b;--gold:#ffd166;--red:#ff637d}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(ellipse at top,#1b2440 0,#090b14 65%);color:var(--text);font-family:ui-monospace,SFMono-Regular,Consolas,monospace;min-height:100vh;padding:18px 12px 32px}
+main{max-width:900px;margin:auto}
+header{text-align:center;margin:4px 0 14px}
+h1{font-size:clamp(30px,7vw,52px);letter-spacing:3px;margin:0;text-shadow:3px 3px #6a294b;color:#fff}
+.subtitle{color:var(--muted);font-size:13px;line-height:1.5;margin:8px auto 0;max-width:650px}
+.frame{border:2px solid var(--line);background:#0b1020;padding:10px;box-shadow:0 0 0 4px #05060b,0 18px 55px #0009;border-radius:5px}
+.hud{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center;margin-bottom:10px}
+.stat{background:#151d30;border:1px solid #35415a;padding:8px 10px;font-size:12px;min-width:90px}
+.stat strong{color:var(--lime);font-size:14px}
+#batteryWrap{height:7px;background:#30384b;margin-top:6px;min-width:100px}
+#batteryBar{height:100%;width:70%;background:var(--lime);transition:width .15s}
+canvas{display:block;width:100%;height:auto;image-rendering:pixelated;background:#080b13;border:1px solid #28334b;touch-action:none}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+button{font:inherit;font-weight:bold;color:var(--text);background:#202a42;border:1px solid #596985;padding:10px 13px;cursor:pointer;border-radius:3px}
+button:hover{background:#2c3a59}button:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+#startBtn{background:#b8ff9b;color:#10180f;border-color:#d9ffc9}
+.note{color:var(--muted);font-size:12px;line-height:1.5;margin:10px 2px 0}
+.mobile{display:none;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(2,42px);gap:5px;margin:12px auto 0;width:max-content}
+.mobile button{padding:0;font-size:18px}
+.mobile button:nth-child(1){grid-column:2;grid-row:1}.mobile button:nth-child(2){grid-column:1;grid-row:2}.mobile button:nth-child(3){grid-column:2;grid-row:2}.mobile button:nth-child(4){grid-column:3;grid-row:2}
+@media(max-width:620px){body{padding:12px 8px}.frame{padding:6px}.stat{min-width:calc(33.3% - 8px);flex:1}.mobile{display:grid}.subtitle{font-size:12px}}
+</style>
+</head>
+<body>
+<main>
+<header><h1>DETENTION</h1><p class="subtitle">ESCAPE THE SCHOOL · Find the key, dodge the hall monitor, and reach the exit before your flashlight dies.</p></header>
+<section class="frame">
+ <div class="hud">
+  <div class="stat">LEVEL <strong id="levelText">1 / 3</strong></div>
+  <div class="stat">TIME <strong id="timeText">00:00</strong></div>
+  <div class="stat">FLASHLIGHT <strong id="batteryText">72%</strong><div id="batteryWrap"><div id="batteryBar"></div></div></div>
+  <div class="stat">KEY <strong id="keyText">MISSING</strong></div>
+ </div>
+ <canvas id="game" width="800" height="520" aria-label="Escape the school game"></canvas>
+ <div class="actions"><button id="startBtn">▶ START GAME</button><button id="restartBtn">↻ NEW RANDOM MAZE</button><button id="soundBtn">♪ SOUND: OFF</button></div>
+ <div class="mobile" aria-label="Touch movement controls"><button data-move="up" aria-label="Move up">▲</button><button data-move="left" aria-label="Move left">◀</button><button data-move="down" aria-label="Move down">▼</button><button data-move="right" aria-label="Move right">▶</button></div>
+ <p class="note">Controls: WASD or arrow keys. Find the gold key (◆), then reach the green exit (▣). Avoid the hall monitor (red). Every level is randomly generated. Battery is limited; grab the single battery pack on each level.</p>
+</section>
+</main>
+<script>
+(function(){
+'use strict';
+const canvas=document.getElementById('game');
+const ctx=canvas.getContext('2d');
+const $=id=>document.getElementById(id);
+const TILE=32, COLS=25, ROWS=16, W=COLS*TILE, H=ROWS*TILE;
+let grid=[],player={x:1,y:1},monster={x:23,y:14},key={x:1,y:1},exit={x:23,y:14},pack={x:1,y:14,used:false};
+let level=1,battery=72,hasKey=false,started=false,finished=false,won=false,sound=false;
+let elapsed=0,lastTick=0,lastMonster=0,lastFrame=0,moveLock=0,notice='Press START to begin!',noticeUntil=Infinity;
+const levelBattery=[72,62,52];
+const dirs=[{x:0,y:-1},{x:1,y:0},{x:0,y:1},{x:-1,y:0}];
+function beep(freq=440,duration=.06){if(!sound)return;try{const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;const a=new AC(),o=a.createOscillator(),g=a.createGain();o.frequency.value=freq;g.gain.value=.035;o.connect(g);g.connect(a.destination);o.start();g.gain.exponentialRampToValueAtTime(.001,a.currentTime+duration);o.stop(a.currentTime+duration);o.onended=()=>a.close()}catch(e){}}
+function rand(n){return Math.floor(Math.random()*n)}
+function inside(x,y){return x>=0&&y>=0&&x<COLS&&y<ROWS}
+function walk(x,y){return inside(x,y)&&grid[y][x]===0}
+function shuffle(a){for(let i=a.length-1;i>0;i--){let j=rand(i+1);[a[i],a[j]]=[a[j],a[i]]}return a}
+function distances(sx,sy){const d=Array.from({length:ROWS},()=>Array(COLS).fill(-1)),q=[[sx,sy]];d[sy][sx]=0;for(let i=0;i<q.length;i++){const [x,y]=q[i];for(const v of dirs){const nx=x+v.x,ny=y+v.y;if(walk(nx,ny)&&d[ny][nx]<0){d[ny][nx]=d[y][x]+1;q.push([nx,ny])}}}return {d,q}}
+function generateMaze(){
+ grid=Array.from({length:ROWS},()=>Array(COLS).fill(1));
+ // Carve a connected maze by randomized depth-first search on odd cells.
+ const sx=1,sy=1,stack=[[sx,sy]];grid[sy][sx]=0;
+ while(stack.length){const [x,y]=stack[stack.length-1],opts=shuffle([{x:x+2,y},{x:x-2,y},{x,y:y+2},{x,y:y-2}].filter(p=>p.x>0&&p.y>0&&p.x<COLS-1&&p.y<ROWS-1&&grid[p.y][p.x]===1));if(!opts.length){stack.pop();continue}const n=opts[0];grid[(y+n.y)/2][(x+n.x)/2]=0;grid[n.y][n.x]=0;stack.push([n.x,n.y])}
+ // Open a few loops to keep routes interesting.
+ for(let i=0;i<Math.floor(COLS*ROWS*.07);i++){let x=1+rand(COLS-2),y=1+rand(ROWS-2);if(grid[y][x]===1&&dirs.some(v=>walk(x+v.x,y+v.y))){grid[y][x]=0}}
+ // Ensure the exit tile and its approach are open and connected.
+ exit={x:COLS-2,y:ROWS-2};grid[exit.y][exit.x]=0;grid[exit.y][exit.x-1]=0;
+ player={x:1,y:1};
+ let reach=distances(player.x,player.y);
+ // In the unlikely event the carved exit is disconnected, connect it to reachable maze.
+ if(reach.d[exit.y][exit.x]<0){for(let x=2;x<=exit.x;x++)grid[exit.y][x]=0;reach=distances(1,1)}
+ const candidates=reach.q.filter(([x,y])=>!(x===1&&y===1)&&!(x===exit.x&&y===exit.y)&&reach.d[y][x]>3);
+ candidates.sort((a,b)=>reach.d[b[1]][b[0]]-reach.d[a[1]][a[0]]);
+ // BFS stores positions as [x, y] arrays. Convert the chosen cell to
+ // an {x, y} object, which the drawing and pickup code expect.
+ const pickedKey=candidates[Math.floor(candidates.length*.38)];
+ key=pickedKey?{x:pickedKey[0],y:pickedKey[1]}:{x:3,y:1};
+ const safe=candidates.filter(([x,y])=>reach.d[y][x]>5&&!(x===key.x&&y===key.y));
+ const m=safe[Math.floor(safe.length*.15)]||[COLS-2,1];monster={x:m[0],y:m[1]};
+ const p=safe.filter(([x,y])=>Math.abs(x-player.x)+Math.abs(y-player.y)>7&&Math.abs(x-exit.x)+Math.abs(y-exit.y)>4&&!(x===monster.x&&y===monster.y)&&!(x===key.x&&y===key.y));
+ const bp=p.length?p[rand(p.length)]:{x:1,y:ROWS-2};pack={x:Array.isArray(bp)?bp[0]:bp.x,y:Array.isArray(bp)?bp[1]:bp.y,used:false};
+}
+function loadLevel(n){level=n;generateMaze();battery=levelBattery[level-1];hasKey=false;started=true;finished=false;won=false;elapsed=0;lastTick=performance.now();lastMonster=lastTick;notice='Find the key, then get to the exit!';noticeUntil=performance.now()+2600;updateHud();draw()}
+function updateHud(){ $('levelText').textContent=level+' / 3';$('timeText').textContent=formatTime(elapsed);$('batteryText').textContent=Math.ceil(Math.max(0,battery))+'%';$('batteryBar').style.width=Math.max(0,battery)+'%';$('batteryBar').style.background=battery<25?'#ff637d':battery<45?'#ffd166':'#b8ff9b';$('keyText').textContent=hasKey?'FOUND':'MISSING';$('keyText').style.color=hasKey?'#b8ff9b':'#ffd166'}
+function formatTime(t){let s=Math.floor(t);return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
+function setNotice(s,ms=1800){notice=s;noticeUntil=performance.now()+ms}
+function move(dx,dy){if(!started||finished||moveLock>performance.now())return;const nx=player.x+dx,ny=player.y+dy;if(!walk(nx,ny))return;player.x=nx;player.y=ny;moveLock=performance.now()+85;beep(330,.025);
+ if(player.x===key.x&&player.y===key.y&&!hasKey){hasKey=true;setNotice('KEY FOUND! Now find the exit.');beep(740,.12)}
+ if(player.x===pack.x&&player.y===pack.y&&!pack.used){pack.used=true;battery=Math.min(100,battery+18);setNotice('BATTERY +18%');beep(620,.1)}
+ if(player.x===exit.x&&player.y===exit.y){if(hasKey){finished=true;won=true;beep(880,.2);setNotice(level<3?'LEVEL CLEARED!':'YOU ESCAPED! SCHOOL IS OVER!',100000)}else{setNotice('The exit is locked — find the key!');beep(160,.1)}}
+ if(player.x===monster.x&&player.y===monster.y)lose();
+ draw();updateHud()}
+function lose(){finished=true;won=false;setNotice('CAUGHT! Try a new random maze.',100000);beep(120,.3)}
+function monsterStep(){if(!started||finished)return;const ds=distances(monster.x,monster.y).d;let opts=dirs.map(v=>({x:monster.x+v.x,y:monster.y+v.y})).filter(p=>walk(p.x,p.y));if(!opts.length)return;opts.sort((a,b)=>{const da=ds[a.y]?.[a.x]??999,db=ds[b.y]?.[b.x]??999;return da-db});const pd=distances(player.x,player.y).d;opts.sort((a,b)=>{const da=Math.abs(a.x-player.x)+Math.abs(a.y-player.y),db=Math.abs(b.x-player.x)+Math.abs(b.y-player.y);return da-db});const best=opts[0];if(Math.abs(best.x-player.x)+Math.abs(best.y-player.y)<=Math.abs(monster.x-player.x)+Math.abs(monster.y-player.y)||Math.random()<.28)monster=best;if(monster.x===player.x&&monster.y===player.y)lose()}
+function draw(){
+ ctx.clearRect(0,0,W,H);
+ // Wall and floor tiles
+ for(let y=0;y<ROWS;y++)for(let x=0;x<COLS;x++){const px=x*TILE,py=y*TILE;if(grid[y][x]){ctx.fillStyle='#1b2338';ctx.fillRect(px,py,TILE,TILE);ctx.fillStyle='#27334c';ctx.fillRect(px+2,py+2,TILE-4,4);ctx.fillStyle='#111727';ctx.fillRect(px+3,py+9,TILE-6,TILE-12)}else{ctx.fillStyle=((x+y)%2)?'#10182a':'#121b2d';ctx.fillRect(px,py,TILE,TILE);ctx.fillStyle='#1a2740';ctx.fillRect(px+5,py+5,2,2)}}
+ // Exit
+ ctx.fillStyle=hasKey?'#173d32':'#382b1b';ctx.fillRect(exit.x*TILE+4,exit.y*TILE+4,TILE-8,TILE-8);ctx.fillStyle=hasKey?'#8dffb4':'#ffd166';ctx.fillRect(exit.x*TILE+11,exit.y*TILE+7,10,22);ctx.fillStyle='#fff2b0';ctx.fillRect(exit.x*TILE+17,exit.y*TILE+17,2,2);
+ // Key
+ if(!hasKey){const kx=key.x*TILE+16,ky=key.y*TILE+16;ctx.save();ctx.shadowColor='#ffd166';ctx.shadowBlur=13;ctx.strokeStyle='#fff0a6';ctx.lineWidth=3;ctx.beginPath();ctx.arc(kx-5,ky-4,5,0,Math.PI*2);ctx.stroke();ctx.fillStyle='#ffd166';ctx.fillRect(kx,ky-2,12,4);ctx.fillRect(kx+7,ky,3,5);ctx.fillRect(kx+11,ky,3,3);ctx.restore()}
+ // Battery pack
+ if(!pack.used){ctx.fillStyle='#b8ff9b';ctx.fillRect(pack.x*TILE+8,pack.y*TILE+8,16,16);ctx.fillStyle='#102017';ctx.fillRect(pack.x*TILE+14,pack.y*TILE+10,4,12);ctx.fillRect(pack.x*TILE+10,pack.y*TILE+14,12,4)}
+ // Monitor
+ ctx.fillStyle='#ff637d';ctx.fillRect(monster.x*TILE+7,monster.y*TILE+6,18,22);ctx.fillStyle='#fff';ctx.fillRect(monster.x*TILE+10,monster.y*TILE+12,4,4);ctx.fillRect(monster.x*TILE+18,monster.y*TILE+12,4,4);ctx.fillStyle='#451426';ctx.fillRect(monster.x*TILE+12,monster.y*TILE+20,8,3);
+ // Player
+ ctx.fillStyle='#7dd3fc';ctx.fillRect(player.x*TILE+7,player.y*TILE+6,18,21);ctx.fillStyle='#f6d7b0';ctx.fillRect(player.x*TILE+9,player.y*TILE+3,14,12);ctx.fillStyle='#18223b';ctx.fillRect(player.x*TILE+11,player.y*TILE+8,3,3);ctx.fillRect(player.x*TILE+18,player.y*TILE+8,3,3);ctx.fillStyle='#e7f7ff';ctx.fillRect(player.x*TILE+10,player.y*TILE+23,4,5);ctx.fillRect(player.x*TILE+18,player.y*TILE+23,4,5);
+ // Flashlight: paint a dark gradient ON TOP of the maze.
+ // Avoid destination-out here: erasing pixels makes the canvas background show
+ // through, which hides the map instead of illuminating it.
+ const cx=player.x*TILE+16,cy=player.y*TILE+16;
+ const r=55+220*(Math.max(0,battery)/100);
+ ctx.save();
+ ctx.globalCompositeOperation='source-over';
+ const light=ctx.createRadialGradient(cx,cy,12,cx,cy,r);
+ light.addColorStop(0,'rgba(2,4,12,0)');
+ light.addColorStop(.38,'rgba(2,4,12,.03)');
+ light.addColorStop(.62,'rgba(2,4,12,.18)');
+ light.addColorStop(.82,'rgba(2,4,12,.62)');
+ light.addColorStop(1,'rgba(2,4,12,.94)');
+ ctx.fillStyle=light;
+ ctx.fillRect(0,0,W,H);
+ // Keep the corners and rooms beyond the beam properly dark.
+ ctx.restore();
+ // redraw player so the player remains visible
+ ctx.fillStyle='#7dd3fc';ctx.fillRect(player.x*TILE+7,player.y*TILE+6,18,21);ctx.fillStyle='#f6d7b0';ctx.fillRect(player.x*TILE+9,player.y*TILE+3,14,12);ctx.fillStyle='#18223b';ctx.fillRect(player.x*TILE+11,player.y*TILE+8,3,3);ctx.fillRect(player.x*TILE+18,player.y*TILE+8,3,3);
+ if(!started||finished){ctx.fillStyle='rgba(4,7,15,.78)';ctx.fillRect(0,0,W,H);ctx.textAlign='center';ctx.fillStyle=won?'#b8ff9b':'#f1f4ff';ctx.font='bold 34px monospace';let title=!started?'ESCAPE THE SCHOOL':won?(level===3?'YOU ESCAPED!':'LEVEL CLEARED!'):'CAUGHT!';ctx.fillText(title,W/2,H/2-18);ctx.fillStyle='#d5dced';ctx.font='16px monospace';let sub=!started?'Find the key. Avoid the monitor. Get out.':won?(level===3?'You made it out. Nice work!':'Ready for the next random maze?'):'Press NEW RANDOM MAZE to try again.';ctx.fillText(sub,W/2,H/2+18);ctx.font='13px monospace';ctx.fillStyle='#b8ff9b';ctx.fillText(!started?'CLICK START GAME BELOW':won&&level<3?'CLICK START GAME FOR NEXT LEVEL':'',W/2,H/2+48)}
+ if(started&&!finished&&performance.now()<noticeUntil){ctx.fillStyle='rgba(5,8,16,.86)';ctx.fillRect(0,8,W,27);ctx.textAlign='center';ctx.fillStyle='#ffd166';ctx.font='bold 14px monospace';ctx.fillText(notice,W/2,27)}
+}
+function frame(now){if(started&&!finished){const dt=Math.min(.1,(now-lastTick)/1000);elapsed+=dt;battery=Math.max(0,battery-dt*(level===1?2.6:level===2?3.1:3.6));if(now-lastMonster>(level===1?720:level===2?610:520)){monsterStep();lastMonster=now}if(battery===0&&Math.random()<.025)setNotice('FLASHLIGHT LOW! Find the battery pack.',1000);if(monster.x===player.x&&monster.y===player.y)lose();updateHud()}lastTick=now;draw();requestAnimationFrame(frame)}
+function startAction(){if(!started){loadLevel(1);$('startBtn').textContent='▶ START GAME';return}if(finished&&won&&level<3){loadLevel(level+1);return}if(finished){loadLevel(1);return}setNotice('Keep moving!',700)}
+function keydown(e){const k=e.key.toLowerCase();const map={arrowup:[0,-1],w:[0,-1],arrowdown:[0,1],s:[0,1],arrowleft:[-1,0],a:[-1,0],arrowright:[1,0],d:[1,0]};if(map[k]){e.preventDefault();move(...map[k])}else if(k===' '||k==='enter'){if(!started||finished){e.preventDefault();startAction()}}}
+document.addEventListener('keydown',keydown);
+$('startBtn').addEventListener('click',startAction);
+$('restartBtn').addEventListener('click',()=>loadLevel(1));
+$('soundBtn').addEventListener('click',()=>{sound=!sound;$('soundBtn').textContent='♪ SOUND: '+(sound?'ON':'OFF');if(sound)beep(520,.07)});
+document.querySelectorAll('[data-move]').forEach(b=>{const m={up:[0,-1],down:[0,1],left:[-1,0],right:[1,0]};b.addEventListener('click',()=>move(...m[b.dataset.move]))});
+generateMaze();draw();updateHud();requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
