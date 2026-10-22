@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dodge Game</title>
+  <style>
+    body {
+      margin: 0;
+      background: #111827;
+      color: white;
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+    h1 { color: #60a5fa; }
+    canvas {
+      background: #1f2937;
+      border: 3px solid #60a5fa;
+      max-width: 95%;
+      touch-action: none;
+    }
+    button {
+      padding: 12px 22px;
+      margin: 10px;
+      border: 0;
+      border-radius: 10px;
+      background: #2563eb;
+      color: white;
+      font-size: 17px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎮 DODGE!</h1>
+  <p>Use ← → or A/D to dodge the blocks!</p>
+  <p>Score: <span id="score">0</span></p>
+  <canvas id="game" width="360" height="480"></canvas>
+  <br>
+  <button onclick="start()">Start / Restart</button>
+  <p id="msg">Press Start to play!</p>
+
+  <script>
+    const c = document.getElementById("game");
+    const ctx = c.getContext("2d");
+    const scoreText = document.getElementById("score");
+    const msg = document.getElementById("msg");
+
+    let player, blocks, score, running, keys, last, spawn;
+
+    function start() {
+      player = { x: 160, y: 425, w: 40, h: 30 };
+      blocks = [];
+      score = 0;
+      keys = {};
+      last = 0;
+      spawn = 0;
+      running = true;
+      scoreText.textContent = score;
+      msg.textContent = "Stay alive!";
+      requestAnimationFrame(loop);
+    }
+
+    document.addEventListener("keydown", e => {
+      if (["ArrowLeft", "ArrowRight", " "].includes(e.key))
+        e.preventDefault();
+      keys[e.key.toLowerCase()] = true;
+    });
+
+    document.addEventListener("keyup", e => {
+      keys[e.key.toLowerCase()] = false;
+    });
+
+    c.addEventListener("pointermove", e => {
+      if (!running) return;
+      const r = c.getBoundingClientRect();
+      player.x = (e.clientX - r.left) * c.width / r.width
+        - player.w / 2;
+      player.x = Math.max(0, Math.min(c.width - player.w, player.x));
+    });
+
+    function loop(t) {
+      if (!running) return;
+      const dt = Math.min((t - (last || t)) / 16.67, 2);
+      last = t;
+
+      if (keys["arrowleft"] || keys["a"]) player.x -= 5 * dt;
+      if (keys["arrowright"] || keys["d"]) player.x += 5 * dt;
+      player.x = Math.max(0, Math.min(c.width - player.w, player.x));
+
+      spawn += dt;
+      if (spawn > Math.max(12, 35 - score / 4)) {
+        blocks.push({
+          x: Math.random() * (c.width - 28),
+          y: -30, w: 28, h: 28,
+          speed: 2 + Math.random() * 2 + score / 100
+        });
+        spawn = 0;
+      }
+
+      ctx.clearRect(0, 0, c.width, c.height);
+
+      ctx.fillStyle = "#34d399";
+      ctx.fillRect(player.x, player.y, player.w, player.h);
+
+      for (const b of blocks) {
+        b.y += b.speed * dt;
+        ctx.fillStyle = "#fb7185";
+        ctx.fillRect(b.x, b.y, b.w, b.h);
+
+        if (
+          player.x < b.x + b.w &&
+          player.x + player.w > b.x &&
+          player.y < b.y + b.h &&
+          player.y + player.h > b.y
+        ) {
+          running = false;
+          msg.textContent = "💥 Game over! Click restart.";
+          return;
+        }
+      }
+
+      blocks = blocks.filter(b => b.y < c.height);
+      score++;
+      scoreText.textContent = Math.floor(score / 5);
+      requestAnimationFrame(loop);
+    }
+  </script>
+</body>
+</html>
